@@ -1,0 +1,46 @@
+{
+  "name": "@rep2recall/r2r-mongo",
+  "version": "0.1.4",
+  "description": "R2r format engine for Rep2Recall",
+  "main": "dist/index.js",
+  "scripts": {
+    "prepublishOnly": "npm run tsc",
+    "test": "ts-mocha tests/**/*.spec.ts",
+    "tsc": "tsc -p tsconfig.lib.json"
+  },
+  "keywords": [
+    "rep2recall",
+    "srs",
+    "memorization"
+  ],
+  "author": "Pacharapol Withayasakpunt",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/patarapolw/rep2recall.git"
+  },
+  "dependencies": {
+    "@types/fast-json-stable-stringify": "^2.0.0",
+    "@types/mongoose": "^5.5.16",
+    "@types/node": "^12.7.2",
+    "@types/shortid": "0.0.29",
+    "@types/spark-md5": "^3.0.1",
+    "ankisync": "^0.1.2",
+    "fast-json-stable-stringify": "^2.0.0",
+    "moment": "^2.24.0",
+    "mongoose": "^5.6.11",
+    "q2filter": "^0.1.4",
+    "reflect-metadata": "^0.1.13",
+    "shortid": "^2.2.14",
+    "spark-md5": "^3.0.0",
+    "typegoose": "^5.9.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/mocha": "^5.2.7",
+    "dotenv": "^8.1.0"
+  }
+}
