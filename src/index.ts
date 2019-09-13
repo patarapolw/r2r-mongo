@@ -225,7 +225,7 @@ export default class R2rMongo extends R2rOnline {
     } else if (options.fields === "*") {
       options.fields = ["data", "source", "deck", "front", "js", "mnemonic", "modified",
         "nextReview", "sCreated", "sH", "srsLevel", "stat", "tBack", "tFront", "tag",
-        "template", "back", "created", "css"];
+        "template", "back", "created", "css", "_id"];
     }
 
     const allFields = new Set<string>(options.fields || []);
