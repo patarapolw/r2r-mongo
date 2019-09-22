@@ -5,9 +5,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "prepublishOnly": "npm run tsc",
+    "prepublishOnly": "npm run build",
     "test": "ts-mocha tests/**/*.spec.ts",
-    "tsc": "tsc -p tsconfig.lib.json"
+    "build": "tsc -p tsconfig.lib.json"
   },
   "keywords": [
     "rep2recall",
@@ -21,16 +21,16 @@
     "url": "https://github.com/patarapolw/rep2recall.git"
   },
   "dependencies": {
-    "@rep2recall/r2r-format": "^0.1.5",
+    "@rep2recall/r2r-format": "file:../r2r-format",
     "@types/fast-json-stable-stringify": "^2.0.0",
     "@types/mongoose": "^5.5.16",
     "@types/shortid": "0.0.29",
     "@types/spark-md5": "^3.0.1",
-    "ankisync": "^0.1.4",
+    "ankisync": "file:../ankisync.js",
     "fast-json-stable-stringify": "^2.0.0",
     "moment": "^2.24.0",
     "mongoose": "^5.6.11",
-    "q2filter": "^0.1.4",
+    "q2filter": "file:../q2filter",
     "reflect-metadata": "^0.1.13",
     "shortid": "^2.2.14",
     "spark-md5": "^3.0.0",
