@@ -17,6 +17,7 @@ import { R2rOnline, ICondOptions, IEntry, IPagedOutput, IRender, ankiMustache, t
   }
 })
 class User extends Typegoose {
+  @prop() _id!: string;
   @prop({ required: true, unique: true }) email!: string;
   @prop() picture?: string;
   @prop({ required: true }) secret!: string;
