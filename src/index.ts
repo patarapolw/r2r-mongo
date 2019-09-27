@@ -119,22 +119,39 @@ class Card extends Typegoose {
 const CardModel = new Card().getModelForClass(Card);
 
 export default class R2rMongo extends R2rOnline {
-  private user?: InstanceType<User>;
+  public user?: InstanceType<User>;
+  private mongoUri: string;
+
+  constructor(mongoUri: string) {
+    super();
+    this.mongoUri = mongoUri;
+  }
 
   public async build() {
-    await mongoose.connect(process.env.MONGO_URI!, { useNewUrlParser: true });
+    await mongoose.connect(this.mongoUri, { useNewUrlParser: true });
     return this;
   }
 
-  public async signup(email: string): Promise<string> {
-    const secret = await generateSecret();
-    this.user = await UserModel.create({
-      _id: await generateSecret(),
-      email,
-      secret
-    });
+  public async signup(
+    email: string,
+    password: string,
+    options: {picture?: string} = {}
+  ): Promise<string> {
+    const u = await UserModel.findOne({ email });
+    if (u) {
+      this.user = u;
+      return u.secret;
+    } else {
+      const secret = await generateSecret();
+      this.user = await UserModel.create({
+        _id: await generateSecret(),
+        email,
+        secret,
+        ...options
+      });
 
-    return secret;
+      return secret;
+    }
   }
 
   public async getSecret(): Promise<string | null> {
@@ -150,6 +167,16 @@ export default class R2rMongo extends R2rOnline {
     }
 
     return null;
+  }
+
+  public async parseSecret(secret: string): Promise<boolean> {
+    const u = await UserModel.findOne({ secret });
+    if (u) {
+      this.user = u;
+      return true;
+    }
+
+    return false;
   }
 
   public async login(email: string, secret: string): Promise<boolean> {
@@ -201,21 +228,28 @@ export default class R2rMongo extends R2rOnline {
     q: string,
     options: ICondOptions<IEntry> = {}
   ): Promise<IPagedOutput<Partial<IEntry>>> {
-    const parser = new QParser({
-      anyOf: ["template", "front", "mnemonic", "deck", "tag"],
-      isString: ["template", "front", "back", "mnemonic", "deck", "tag"],
-      isDate: ["created", "modified", "nextReview"],
+    if (options.sortBy === "random") {
+      q += " is:random";
+      delete options.sortBy;
+    }
+
+    const parser = new QParser<IEntry>(q, {
+      anyOf: new Set(["template", "front", "mnemonic", "deck", "tag"]),
+      isString: new Set(["template", "front", "back", "mnemonic", "deck", "tag"]),
+      isDate: new Set(["created", "modified", "nextReview"]),
       transforms: {
         "is:due": () => {
           return { nextReview: { $lt: new Date() } }
         }
       },
-      noParse: ["is:distinct", "is:duplicate", "is:random"],
-      sortBy: options.sortBy,
-      desc: options.desc
+      noParse: new Set(["is:distinct", "is:duplicate", "is:random"]),
+      sortBy: {
+        key: options.sortBy || "created",
+        desc: options.desc || true
+      }
     });
 
-    const fullCond = parser.getCondFull(q);
+    const fullCond = parser.getCondFull();
 
     if (!options.fields) {
       return {
@@ -408,7 +442,7 @@ export default class R2rMongo extends R2rOnline {
       return newProj;
     })();
 
-    if (fullCond.noParse.includes("is:distinct")) {
+    if (fullCond.noParse.has("is:distinct")) {
       aggArray.push(
         getGroupStmt("key"),
         { $project: { data: { $arrayElemAt: ["$data", 0] } } },
@@ -416,7 +450,7 @@ export default class R2rMongo extends R2rOnline {
       )
     }
 
-    if (fullCond.noParse.includes("is:duplicate")) {
+    if (fullCond.noParse.has("is:duplicate")) {
       aggArray.push(
         getGroupStmt("front"),
         { $match: { repeat: { $gt: 1 } } },
@@ -438,15 +472,15 @@ export default class R2rMongo extends R2rOnline {
       { $project: outputProj }
     );
 
-    if (fullCond.noParse.includes("is:random") || fullCond.sortBy === "random" || options.sortBy === "random") {
+    if (fullCond.noParse.has("is:random")) {
       shuffle(ids);
       aggArray = [
         { $match: { _id: { $in: ids.slice(0, options.limit) } } },
         ...aggArray
       ]
     } else {
-      const sortBy = fullCond.sortBy || options.sortBy;
-      const desc = (fullCond.desc === undefined ? options.desc : undefined) || false;
+      const sortBy = fullCond.sortBy ? fullCond.sortBy.key : options.sortBy;
+      const desc = fullCond.sortBy ? fullCond.sortBy.desc : options.desc;
       if (sortBy) {
         aggArray.push(
           { $sort: { [sortBy]: desc ? -1 : 1 } }
