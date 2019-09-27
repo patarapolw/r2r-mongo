@@ -1,6 +1,6 @@
 {
   "name": "@rep2recall/r2r-mongo",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "R2r format engine for Rep2Recall",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

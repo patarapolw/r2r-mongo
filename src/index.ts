@@ -128,7 +128,7 @@ export default class R2rMongo extends R2rOnline {
   }
 
   public async build() {
-    await mongoose.connect(this.mongoUri, { useNewUrlParser: true });
+    await mongoose.connect(this.mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
     return this;
   }
 
