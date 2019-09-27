@@ -5,7 +5,7 @@ import QParser from "q2filter";
 import { shuffle, chunk, generateSecret } from "./util";
 import stringify from "fast-json-stable-stringify";
 import Anki, { IMedia } from "ankisync";
-import { prop, Typegoose, Ref, pre, index, InstanceType } from 'typegoose';
+import { prop, Typegoose, Ref, pre, index, InstanceType } from '@hasezoey/typegoose';
 import mongoose from 'mongoose';
 import moment from "moment";
 import { ObjectID } from "bson";
@@ -129,6 +129,7 @@ export default class R2rMongo extends R2rOnline {
 
   public async build() {
     await mongoose.connect(this.mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
+    mongoose.set('useCreateIndex', true);
     return this;
   }
 
