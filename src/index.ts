@@ -486,13 +486,16 @@ export default class R2rMongo extends R2rOnline {
       if (sortBy) {
         aggArray.push(
           { $sort: { [sortBy]: desc ? -1 : 1 } }
-        )
+        );
       }
 
-      aggArray.push(
-        { $skip: options.offset },
-        { $limit: options.limit }
-      )
+      if (options.offset) {
+        aggArray.push({ $skip: options.offset });
+      }
+
+      if (options.limit) {
+        aggArray.push({ $limit: options.limit });
+      }
     }
 
     const data = await CardModel.aggregate(aggArray);
