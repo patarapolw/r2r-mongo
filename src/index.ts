@@ -8,7 +8,6 @@ import Anki, { IMedia } from "ankisync";
 import { prop, Typegoose, Ref, pre, index, InstanceType } from '@hasezoey/typegoose';
 import mongoose from 'mongoose';
 import moment from "moment";
-import { ObjectID } from "bson";
 import { R2rOnline, ICondOptions, IEntry, IPagedOutput, IRender, ankiMustache, toSortedData, R2rLocal, IProgress } from "@rep2recall/r2r-format";
 
 @pre<User>("save", async function () {
@@ -17,7 +16,6 @@ import { R2rOnline, ICondOptions, IEntry, IPagedOutput, IRender, ankiMustache, t
   }
 })
 class User extends Typegoose {
-  @prop() _id!: string;
   @prop({ required: true, unique: true }) email!: string;
   @prop() picture?: string;
   @prop({ required: true }) secret!: string;
@@ -28,7 +26,7 @@ const UserModel = new User().getModelForClass(User);
 @index({ name: 1, user: 1 }, { unique: true })
 class Deck extends Typegoose {
   @prop({ required: true }) name!: string;
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const DeckModel = new Deck().getModelForClass(Deck);
@@ -38,7 +36,7 @@ class Source extends Typegoose {
   @prop({ required: true }) h!: string;
   @prop({ required: true }) name!: string;
   @prop({ required: true, default: new Date() }) created?: Date;
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const SourceModel = new Source().getModelForClass(Source);
@@ -58,7 +56,7 @@ class Template extends Typegoose {
   @prop() back?: string;
   @prop() css?: string;
   @prop() js?: string;
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const TemplateModel = new Template().getModelForClass(Template);
@@ -75,7 +73,7 @@ class Note extends Typegoose {
   @prop({ ref: Source }) source?: Ref<Source>;
   @prop({ required: true }) data!: Record<string, any>;
   @prop({ required: true }) order!: Record<string, number>;
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const NoteModel = new Note().getModelForClass(Note);
@@ -91,7 +89,7 @@ class Media extends Typegoose {
   @prop({ ref: Source }) source?: Ref<Source>;
   @prop({ required: true }) name!: string;
   @prop({ required: true }) data!: ArrayBuffer;
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const MediaModel = new Media().getModelForClass(Media);
@@ -114,7 +112,7 @@ class Card extends Typegoose {
   @prop() stat?: {
     streak: { right: number; wrong: number };
   };
-  @prop({ ref: User }) user?: Ref<User>;
+  @prop({ ref: User, required: true }) user!: Ref<User>;
 }
 
 const CardModel = new Card().getModelForClass(Card);
@@ -137,7 +135,7 @@ export default class R2rMongo extends R2rOnline {
   public async signup(
     email: string,
     password: string,
-    options: {picture?: string} = {}
+    options: { picture?: string } = {}
   ): Promise<string> {
     const u = await UserModel.findOne({ email });
     if (u) {
@@ -146,7 +144,6 @@ export default class R2rMongo extends R2rOnline {
     } else {
       const secret = await generateSecret();
       this.user = await UserModel.create({
-        _id: await generateSecret(),
         email,
         secret,
         ...options
@@ -204,11 +201,11 @@ export default class R2rMongo extends R2rOnline {
   public async reset() {
     if (this.user) {
       await Promise.all([
-        SourceModel.deleteMany({ user: this.user._id }),
-        MediaModel.deleteMany({ user: this.user._id }),
-        TemplateModel.deleteMany({ user: this.user._id }),
-        NoteModel.deleteMany({ user: this.user._id }),
-        CardModel.deleteMany({ user: this.user._id })
+        SourceModel.deleteMany({ user: this.user }),
+        MediaModel.deleteMany({ user: this.user }),
+        TemplateModel.deleteMany({ user: this.user }),
+        NoteModel.deleteMany({ user: this.user }),
+        CardModel.deleteMany({ user: this.user })
       ]);
 
       await this.user.remove();
@@ -311,7 +308,7 @@ export default class R2rMongo extends R2rOnline {
       aggArray.push(
         {
           $lookup: {
-            from: "note",
+            from: "notes",
             localField: "note",
             foreignField: "_id",
             as: "n"
@@ -338,7 +335,7 @@ export default class R2rMongo extends R2rOnline {
       aggArray.push(
         {
           $lookup: {
-            from: "deck",
+            from: "decks",
             localField: "deck",
             foreignField: "_id",
             as: "d"
@@ -363,7 +360,7 @@ export default class R2rMongo extends R2rOnline {
       aggArray.push(
         {
           $lookup: {
-            from: "source",
+            from: "sources",
             localField: "source",
             foreignField: "_id",
             as: "s"
@@ -390,7 +387,7 @@ export default class R2rMongo extends R2rOnline {
       aggArray.push(
         {
           $lookup: {
-            from: "template",
+            from: "templates",
             localField: "template",
             foreignField: "_id",
             as: "t"
@@ -510,19 +507,20 @@ export default class R2rMongo extends R2rOnline {
     entries = await entries.mapAsync(async (e) => await this.transformCreateOrUpdate(null, e)) as IEntry[];
     const now = new Date();
 
-    const sIdMap: Record<string, ObjectID> = {};
+    const sIdMap: Record<string, Source> = {};
 
     await entries.filter((e) => e.sH).distinctBy((el) => el.sH!).mapAsync(async (el) => {
       try {
         sIdMap[el.sH!] = (await SourceModel.create({
           name: el.source!,
           created: el.sCreated ? moment(el.sCreated).toDate() : now,
-          h: el.sH!
-        }))._id
+          h: el.sH!,
+          user: this.user
+        }))
       } catch (err) { }
     });
 
-    const tIdMap: Record<string, ObjectID> = {};
+    const tIdMap: Record<string, Template> = {};
 
     await entries.filter((e) => e.tFront).mapAsync(async (el) => {
       try {
@@ -532,8 +530,9 @@ export default class R2rMongo extends R2rOnline {
           back: el.tBack,
           css: el.css,
           js: el.js,
-          sourceId: el.sH ? sIdMap[el.sH] : undefined
-        }))._id;
+          source: el.sH ? sIdMap[el.sH] : undefined,
+          user: this.user
+        }));
       } catch (e) { }
     });
 
@@ -558,18 +557,17 @@ export default class R2rMongo extends R2rOnline {
         name: `${el.sH}/${el.template}/${el.data![0].value}`,
         data,
         order,
-        sourceId: el.sH ? sIdMap[el.sH] : undefined
+        source: el.sH ? sIdMap[el.sH] : undefined,
+        user: this.user
       }
     });
-
-    const nIdMap: Record<string, ObjectID> = {};
 
     try {
       await NoteModel.insertMany(ns, { ordered: false }, (err, docs) => {
         for (const el of entries) {
           for (const d of docs) {
             if (nDataMap[SparkMD5.hash(stringify(el.data!))] === d.key) {
-              (el as any).noteId = d._id;
+              (el as any).noteId = d;
               break;
             }
           }
@@ -577,11 +575,11 @@ export default class R2rMongo extends R2rOnline {
       });
     } catch (e) { }
 
-    const dMap: { [key: string]: ObjectID } = {};
+    const dMap: { [key: string]: Deck } = {};
     const decks = entries.map((e) => e.deck);
     const deckIds = await decks.mapAsync((d) => this.getOrCreateDeck(d));
     decks.forEach((d, i) => {
-      dMap[d] = new ObjectID(deckIds[i]);
+      dMap[d] = deckIds[i];
     });
 
     return (await CardModel.insertMany(entries.map((e) => {
@@ -591,111 +589,120 @@ export default class R2rMongo extends R2rOnline {
         mnemonic: e.mnemonic,
         srsLevel: e.srsLevel,
         nextReview: e.nextReview,
-        deckId: dMap[e.deck],
-        noteId: (e as any).noteId,
-        templateId: e.template ? tIdMap[e.template] : undefined,
+        deck: dMap[e.deck],
+        note: (e as any).noteId,
+        template: e.template ? tIdMap[e.template] : undefined,
         created: now,
-        tag: e.tag
+        tag: e.tag,
+        user: this.user
       }
     }))).map((el) => el._id.toString());
   }
 
-  public async updateMany(ids: string[], u: Partial<IEntry>) {
-    const cs = await (await CardModel.find({ _id: { $in: ids.map((id) => new ObjectID(id)) } })).mapAsync(async (c) => {
-      for (const k of Object.keys(c)) {
-        if (!Object.keys(u).includes(k) && k !== "_id") {
-          delete (c as any)[k];
-        }
-      }
+  private async updateOne(id: string, u: Partial<IEntry>) {
+    const c = await CardModel.findById(id);
+    if (!c) {
+      return;
+    }
 
-      const c0: any = Object.assign(c, await this.transformCreateOrUpdate(c._id!, u));
-      const c1: any = { _id: c._id! };
-
-      for (let [k, v] of Object.entries(c0)) {
-        switch (k) {
-          case "deck":
-            k = "deckId",
-              v = await this.getOrCreateDeck(v as string);
-            c1[k] = v;
-            break;
-          case "tFront":
-          case "tBack":
-            k = k.substr(1).toLocaleLowerCase();
-          case "css":
-          case "js":
-            const { template } = (await CardModel.findOne({ _id: c._id! }))!;
-            await TemplateModel.updateOne({ _id: template }, {
-              $set: { [k]: v }
-            });
-            break;
-          case "data":
-            const { note } = (await CardModel.findOne({ _id: c._id! }).populate("note"))!;
-            console.log(note);
-            if (note) {
-              const { order, data } = note as Note;
-              for (const { key, value } of v as any[]) {
-                if (!order![key]) {
-                  order![key] = Math.max(...Object.values(order!)) + 1;
-                }
-                data![key] = value;
+    for (let [k, v] of Object.entries(await this.transformCreateOrUpdate(c._id, u))) {
+      switch (k) {
+        case "tFront":
+        case "tBack":
+          k = k.substr(1).toLocaleLowerCase();
+        case "css":
+        case "js":
+          const { template } = (await CardModel.findOne({ _id: c._id! }))!;
+          await TemplateModel.updateOne({ _id: template }, {
+            $set: { [k]: v }
+          });
+          break;
+        case "data":
+          const { note } = (await CardModel.findOne({ _id: c._id! }).populate("note"))!;
+          if (note) {
+            const { order, data } = note as Note;
+            for (const { key, value } of v as any[]) {
+              if (!order![key]) {
+                order![key] = Math.max(...Object.values(order!)) + 1;
               }
-              await NoteModel.updateOne({ _id: (note as any)._id }, {
-                $set: { order, data }
-              });
-            } else {
-              const order: Record<string, number> = {};
-              const data: Record<string, any> = {};
-              for (const { key, value } of v as any[]) {
-                if (!order[key]) {
-                  order[key] = Math.max(-1, ...Object.values(order)) + 1;
-                }
-                data[key] = value;
-              }
-
-              const key = SparkMD5.hash(stringify(data))
-              const name = `${key}/${Object.values(data)[0]}`;
-              c1.note = await NoteModel.create({ key, name, order, data });
+              data![key] = value;
             }
-            break;
-          default:
-            c1[k] = v;
-        }
-      }
+            await NoteModel.updateOne({ _id: (note as any)._id }, {
+              $set: { order, data }
+            });
+          } else {
+            const order: Record<string, number> = {};
+            const data: Record<string, any> = {};
+            for (const { key, value } of v as any[]) {
+              if (!order[key]) {
+                order[key] = Math.max(-1, ...Object.values(order)) + 1;
+              }
+              data[key] = value;
+            }
 
-      return c1;
-    });
-
-    await cs.mapAsync(async (c) => {
-      if (Object.keys(c).length > 1) {
-        const { _id, ...$set } = c;
-        await CardModel.updateOne({ _id }, { $set });
+            const key = SparkMD5.hash(stringify(data))
+            const name = `${key}/${Object.values(data)[0]}`;
+            c.note = await NoteModel.create({ key, name, order, data, user: this.user });
+          }
+          break;
+        default:
+          (c as any)[k] = v;
       }
-    });
+    }
+    await c.save();
+  }
+
+  public async updateMany(ids: string[], u: Partial<IEntry>) {
+    const { tFront, tBack, front, back, css, js, deck, ...remaining } = u;
+
+    if ([tFront, tBack, front, back, css, js].some((el) => el !== undefined)) {
+      await ids.mapAsync((id) => this.updateOne(id, { tFront, tBack, front, back, css, js }));
+    }
+
+    const $set: any = remaining;
+    if (deck) {
+      $set.deck = await this.getOrCreateDeck(deck);
+    }
+
+    await CardModel.updateMany({_id: {$in: ids}}, {$set});
   }
 
   public async addTags(ids: string[], tags: string[]) {
-    await CardModel.updateMany({ _id: { $in: ids.map((id) => new ObjectID(id)) } }, {
+    await CardModel.updateMany({ _id: { $in: ids } }, {
       $addToSet: { tag: { $each: tags } }
     });
   }
 
   public async removeTags(ids: string[], tags: string[]) {
-    await CardModel.updateMany({ _id: { $in: ids.map((id) => new ObjectID(id)) } }, {
+    await CardModel.updateMany({ _id: { $in: ids } }, {
       $pull: { tag: { $in: tags } }
     });
   }
 
   public async deleteMany(ids: string[]) {
-    await CardModel.deleteMany({ _id: { $in: ids.map((id) => new ObjectID(id)) } });
+    await CardModel.deleteMany({ _id: { $in: ids } });
   }
 
-  public async render(cardId: string) {
-    const r = await this.parseCond(`_id=${cardId}`, {
-      limit: 1,
-      fields: ["front", "back", "mnemonic", "tFront", "tBack", "data", "css", "js"]
-    });
+  public async render(cardId: string): Promise<IRender> {
+    const c0 = await CardModel.findById(cardId).populate("template").populate("note");
+    if (!c0) {
+      throw new Error("cardId does not exists");
+    }
 
-    const c = r.data[0] as IRender;
+    const template = c0.template as Template | undefined;
+    const note = c0.note as Note | undefined;
+
+    const c = {
+      front: c0.front,
+      back: c0.back,
+      mnemonic: c0.mnemonic,
+      tFront: template ? template.front : undefined,
+      tBack: template ? template.back : undefined,
+      css: template ? template.css : undefined,
+      js: template ? template.js : undefined,
+      data: note ? note.data : {}
+    }
+
     const { tFront, tBack, data } = c;
 
     if (/@md5\n/.test(c.front)) {
@@ -710,7 +717,7 @@ export default class R2rMongo extends R2rOnline {
   }
 
   protected async updateSrsLevel(dSrsLevel: number, cardId: string) {
-    const card = await CardModel.findOne({ _id: new ObjectID(cardId) });
+    const card = await CardModel.findById(cardId);
 
     if (!card) {
       return;
@@ -750,8 +757,7 @@ export default class R2rMongo extends R2rOnline {
       card.nextReview = repeatReview();
     }
 
-    const { srsLevel, stat, nextReview } = card;
-    this.updateMany([cardId], { srsLevel, stat, nextReview });
+    await card.save()
   }
 
   protected async transformCreateOrUpdate(
@@ -801,16 +807,16 @@ export default class R2rMongo extends R2rOnline {
     return u;
   }
 
-  protected async getOrCreateDeck(name: string): Promise<string> {
+  protected async getOrCreateDeck(name: string): Promise<Deck> {
     try {
-      return (await DeckModel.create({ name }))._id.toString();
+      return (await DeckModel.create({ name, user: this.user }));
     } catch (e) {
-      return (await DeckModel.findOne({ name }))!._id.toString();
+      return (await DeckModel.findOne({ name, user: this.user }))!;
     }
   }
 
   protected async getData(cardId: string): Promise<Array<{ key: string, value: any }> | null> {
-    const c = await CardModel.findOne({ _id: new ObjectID(cardId) }).populate("note", "data");
+    const c = await CardModel.findById(cardId).populate("note", "data");
     if (c && c.note) {
       const { data, order } = c.note as Note;
       return toSortedData({ data, order });
@@ -820,7 +826,7 @@ export default class R2rMongo extends R2rOnline {
   }
 
   protected async getFront(cardId: string): Promise<string> {
-    const c = await CardModel.findOne({ _id: new ObjectID(cardId) }).populate("note", "data").populate("template", "front");
+    const c = await CardModel.findById(cardId).populate("note", "data").populate("template", "front");
     if (c && c.note && c.template) {
       if (c.front.startsWith("@md5\n")) {
         return ankiMustache((c.template as Template).front, (c.note as Note).data || {});
@@ -838,7 +844,7 @@ export default class R2rMongo extends R2rOnline {
     const callback = options ? options.callback : undefined;
     let current = 1;
 
-    const ms = await MediaModel.find();
+    const ms = await MediaModel.find({ user: this.user });
     for (const m of ms) {
       if (callback) callback({ text: "Inserting media", current, max: ms.length });
       try {
@@ -863,17 +869,17 @@ export default class R2rMongo extends R2rOnline {
   }
 
   public async getMedia(h: string): Promise<IMedia | null> {
-    const m = await MediaModel.findOne({ h }) as IMedia;
+    const m = await MediaModel.findOne({ h, user: this.user }) as IMedia;
     return m || null;
   }
 
   public async allMedia() {
-    return (await MediaModel.find({})) as IMedia[];
+    return (await MediaModel.find({ user: this.user })) as IMedia[];
   }
 
   public async createMedia(m: { name: string, data: ArrayBuffer }) {
     const h = SparkMD5.ArrayBuffer.hash(m.data);
-    await MediaModel.create({ ...m, h });
+    await MediaModel.create({ ...m, h, user: this.user });
     return h;
   }
 
@@ -891,14 +897,15 @@ export default class R2rMongo extends R2rOnline {
     const data = fs.readFileSync(r2r.filename);
     const sourceH = SparkMD5.ArrayBuffer.hash(data);
     const now = new Date();
-    let sourceId: ObjectID;
+    let source: Source;
 
     try {
-      sourceId = (await SourceModel.create({
+      source = (await SourceModel.create({
         name: filename || r2r.filename,
         h: sourceH,
-        created: now
-      }))._id;
+        created: now,
+        user: this.user
+      }));
     } catch (e) {
       if (callback) callback({ text: "Duplicated Anki resource" });
       return;
@@ -908,7 +915,8 @@ export default class R2rMongo extends R2rOnline {
       try {
         MediaModel.create({
           ...m,
-          sourceId
+          source,
+          user: this.user
         });
       } catch (e) { }
     });
@@ -934,16 +942,17 @@ export default class R2rMongo extends R2rOnline {
     if (callback) callback({ text: "Reading Anki file" });
 
     const data = fs.readFileSync(anki.filePath);
-    let sourceId: ObjectID;
+    let source: Source;
     const sourceH = SparkMD5.ArrayBuffer.hash(data);
     const now = new Date();
 
     try {
-      sourceId = (await SourceModel.create({
+      source = (await SourceModel.create({
         name: filename || anki.filePath,
         h: SparkMD5.ArrayBuffer.hash(data),
-        created: now
-      }))._id;
+        created: now,
+        user: this.user
+      }));
     } catch (e) {
       if (callback) callback({ text: "Duplicated Anki resource" });
       return;
@@ -963,7 +972,8 @@ export default class R2rMongo extends R2rOnline {
           h: el.h,
           name: el.name,
           data: el.data,
-          sourceId
+          source,
+          user: this.user
         })
       } catch (e) { }
 
@@ -971,9 +981,9 @@ export default class R2rMongo extends R2rOnline {
     }
 
     const card = await anki.apkg.tables.cards.all();
-    const dIdMap: Record<string, ObjectID> = {};
-    const tIdMap: Record<string, ObjectID> = {};
-    const nIdMap: Record<string, ObjectID> = {};
+    const dIdMap: Record<string, Deck> = {};
+    const tIdMap: Record<string, Template | null> = {};
+    const nIdMap: Record<string, Note | null> = {};
 
     current = 0;
     max = card.length;
@@ -988,16 +998,15 @@ export default class R2rMongo extends R2rOnline {
             name: c.deck.name,
             user: this.user
           });
-          dIdMap[c.deck.name] = new ObjectID();
         }
       }
 
       if (decks.length > 0) {
         await decks.mapAsync(async (d) => {
           try {
-            dIdMap[d.name] = (await DeckModel.create(d))._id;
+            dIdMap[d.name] = (await DeckModel.create({ name: d.name, user: this.user }));
           } catch (e) {
-            dIdMap[d.name] = (await DeckModel.findOne(d))!._id;
+            dIdMap[d.name] = (await DeckModel.findOne({ name: d.name, user: this.user }))!;
           }
         });
       }
@@ -1009,26 +1018,25 @@ export default class R2rMongo extends R2rOnline {
           back: c.template.afmt,
           css: c.note.model.css
         }));
-        if (!tIdMap[key]) {
+        if (tIdMap[key] === undefined) {
           templates.push({
             name: `${sourceH}/${c.note.model.name}/${c.template.name}`,
-            sourceId: sourceH,
+            source,
             front: c.template.qfmt,
             back: c.template.afmt,
             css: c.note.model.css,
             key,
             user: this.user
           });
-          tIdMap[key] = new ObjectID();
+          tIdMap[key] = null;
         }
       }
 
       if (templates.length > 0) {
-        await TemplateModel.insertMany(templates, { ordered: false }, (err, docs) => {
-          for (const d of docs) {
-            tIdMap[d.key!] = d._id;
-          }
-        })
+        const docs = await TemplateModel.insertMany(templates, { ordered: false });
+        for (const d of docs) {
+          tIdMap[d.key!] = d;
+        }
       }
 
       const notes: any[] = [];
@@ -1040,23 +1048,23 @@ export default class R2rMongo extends R2rOnline {
           order[k] = i;
         });
         const key = SparkMD5.hash(stringify(data));
-        if (!nIdMap[key]) {
+        if (nIdMap[key] === undefined) {
           notes.push({
             key,
             name: `${sourceH}/${c.note.model.name}/${c.template.name}/${c.note.flds[0]}`,
             data,
-            order
+            order,
+            user: this.user
           });
-          nIdMap[key] = new ObjectID();
+          nIdMap[key] = null;
         }
       }
 
       if (notes.length > 0) {
-        await NoteModel.insertMany(notes, { ordered: false }, (err, docs) => {
-          for (const d of docs) {
-            nIdMap[d.key] = d._id;
-          }
-        })
+        const docs = await NoteModel.insertMany(notes, { ordered: false })
+        for (const d of docs) {
+          nIdMap[d.key] = d;
+        }
       }
 
       try {
@@ -1071,17 +1079,18 @@ export default class R2rMongo extends R2rOnline {
           const back = ankiMustache(c.template.afmt, data, front);
 
           return {
-            deckId: dIdMap[c.deck.name],
-            templateId: tIdMap[SparkMD5.hash(stringify({
+            deck: dIdMap[c.deck.name],
+            template: tIdMap[SparkMD5.hash(stringify({
               front: c.template.qfmt,
               back: c.template.afmt,
               css: c.note.model.css
             }))],
-            noteId: nIdMap[key],
+            note: nIdMap[key],
             front: `@md5\n${SparkMD5.hash(front)}`,
             back: `@md5\n${SparkMD5.hash(back)}`,
             tag: c.note.tags,
-            created: now
+            created: now,
+            user: this.user
           }
         }), { ordered: false });
       } catch (e) { }

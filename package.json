@@ -1,6 +1,6 @@
 {
   "name": "@rep2recall/r2r-mongo",
-  "version": "0.2.5",
+  "version": "0.2.7",
   "description": "R2r format engine for Rep2Recall",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@hasezoey/typegoose": "^5.9.2",
-    "@rep2recall/r2r-format": "^0.1.7",
+    "@rep2recall/r2r-format": "^0.1.10",
     "@types/fast-json-stable-stringify": "^2.0.0",
     "@types/mongoose": "^5.5.16",
     "@types/shortid": "0.0.29",
